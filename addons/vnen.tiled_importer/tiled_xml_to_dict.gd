@@ -23,10 +23,20 @@
 tool
 extends Reference
 
+# All templates loaded, can be looked up by path name
+var _loaded_templates = {}
+# Maps each tileset file used by the map to it's first gid; Used for template parsing
+var _tileset_path_to_first_gid = {}
+
+func reset_global_memebers():
+	_loaded_templates = {}
+	_tileset_path_to_first_gid = {}
+
 # Reads a TMX file from a path and return a Dictionary with the same structure
 # as the JSON map format
 # Returns an error code if failed
 func read_tmx(path):
+	reset_global_memebers()
 	var parser = XMLParser.new()
 	var err = parser.open(path)
 	if err != OK:
@@ -73,6 +83,7 @@ func read_tmx(path):
 					if not "source" in tileset_data:
 						printerr("Error parsing TMX file '%s'. Missing tileset source (around line %d)." % [path, parser.get_current_line()])
 						return ERR_INVALID_DATA
+					_tileset_path_to_first_gid[path] = tileset_data["firstgid"]
 					data.tilesets.push_back(tileset_data)
 
 			elif parser.get_node_name() == "layer":
@@ -134,10 +145,12 @@ func read_tsx(path):
 		printerr("Error parsing TMX file '%s'. Expected 'map' element.")
 		return ERR_INVALID_DATA
 
-	return parse_tileset(parser)
+	var tileset = parse_tileset(parser)
+
+	return tileset
 
 # Parses a tileset element from the XML and return a dictionary
-# Returns san error code if fails
+# Return an error code if fails
 func parse_tileset(parser):
 	var err = OK
 	var data = attributes_to_dict(parser)
@@ -187,6 +200,77 @@ func parse_tileset(parser):
 				data.propertytypes = prop_data.propertytypes
 
 		err = parser.read()
+
+	return data
+
+func get_template(path):
+	# If this template has not yet been loaded
+	if not _loaded_templates.has(path):
+		# IS XML
+		if path.get_extension().to_lower() == "tx":
+			var parser = XMLParser.new()
+			var err = parser.open(path)
+			if err != OK:
+				printerr("Error opening TX file '%s'." % [path])
+				return err
+			var content = parse_template(parser, path)
+			if typeof(content) != TYPE_DICTIONARY:
+				# Error happened
+				print("Error parsing template map file '%s'." % [path])
+				return false
+			_loaded_templates[path] = content
+
+		# IS JSON
+		else:
+			var file = File.new()
+			var err = file.open(path, File.READ)
+			if err != OK:
+				return err
+
+			var content = JSON.parse(file.get_as_text())
+			if content.error != OK:
+				print("Error parsing JSON template map file '%s'." % [path], content.error_string)
+				return content.error
+			_loaded_templates[path] = content
+
+	var dict = _loaded_templates[path]
+	var dictCopy = {}
+	for k in dict:
+		dictCopy[k] = dict[k]
+
+	return dictCopy
+
+func parse_template(parser, path):
+	var err = OK
+	# Template root node shouldn't have attributes
+	var data = {}
+	var tileset_gid_increment = 0
+	data.id = 0
+
+	err = parser.read()
+	while err == OK:
+		if parser.get_node_type() == XMLParser.NODE_ELEMENT_END:
+			if parser.get_node_name() == "template":
+				break
+
+		elif parser.get_node_type() == XMLParser.NODE_ELEMENT:
+			if parser.get_node_name() == "tileset":
+				var ts_path = remove_filename_from_path(path) + parser.get_named_attribute_value_safe("source")
+				for t in _tileset_path_to_first_gid:
+					if is_same_file(ts_path, t):
+						tileset_gid_increment += _tileset_path_to_first_gid[t] - 1
+						data.tileset = t
+
+
+			if parser.get_node_name() == "object":
+				var object = parse_object(parser)
+				for k in object:
+					data[k] = object[k]
+
+		err = parser.read()
+
+	if data.has("gid"):
+		data["gid"] += tileset_gid_increment
 
 	return data
 
@@ -254,6 +338,22 @@ func parse_tile_data(parser):
 func parse_object(parser):
 	var err = OK
 	var data = attributes_to_dict(parser)
+
+	if data.has("template"):
+		var template_file = data["template"]
+		var template_data = get_template(template_file)
+		if typeof(template_data) != TYPE_DICTIONARY:
+			# Error happened
+			print("Error getting template for object with id " + str(data["id"]))
+			return false
+		# Overwrite template data with current object data
+		for k in data:
+			template_data[k] = data[k]
+		data = template_data
+
+		print ("AFTER TEMPLATE: ")
+		for k in data:
+			print(str(k) + ": " + str(data[k]))
 
 	if not parser.is_empty():
 		err = parser.read()
@@ -553,3 +653,33 @@ func attributes_to_dict(parser):
 			val = false
 		data[attr] = val
 	return data
+
+func get_filename_from_path(path):
+	var substrings = path.split("/", false)
+	var file_name = substrings[substrings.size() - 1]
+	return file_name
+
+func remove_filename_from_path(path):
+	var file_name = get_filename_from_path(path)
+	var stringSize = path.length() - file_name.length()
+	var file_path = path.substr(0,stringSize)
+	return file_path
+
+func is_same_file(path1, path2):
+	var file1 = File.new()
+	var err = file1.open(path1, File.READ)
+	if err != OK:
+		return err
+
+	var file2 = File.new()
+	err = file2.open(path2, File.READ)
+	if err != OK:
+		return err
+
+	var file1_str = file1.get_as_text()
+	var file2_str = file1.get_as_text()
+
+	if file1_str == file2_str:
+		return true
+
+	return false
