@@ -62,9 +62,19 @@ const whitelist_properties = [
 	"width"
 ]
 
+# All templates loaded, can be looked up by path name
+var _loaded_templates = {}
+# Maps each tileset file used by the map to it's first gid; Used for template parsing
+var _tileset_path_to_first_gid = {}
+
+func reset_global_memebers():
+	_loaded_templates = {}
+	_tileset_path_to_first_gid = {}
+
 # Main function
 # Reads a source file and gives back a scene
 func build(source_path, options):
+	reset_global_memebers()
 	var map = read_file(source_path)
 	if typeof(map) == TYPE_INT:
 		return map
@@ -294,6 +304,22 @@ func make_layer(layer, parent, root, data):
 			layer.objects.sort_custom(self, "object_sorter")
 
 		for object in layer.objects:
+			if "template" in object:
+				var template_file = object["template"]
+				var template_data = get_template(template_file)
+				if typeof(template_data) != TYPE_DICTIONARY:
+					# Error happened
+					print("Error getting template for object with id " + str(data["id"]))
+					continue
+				# Overwrite template data with current object data
+				for k in object:
+					template_data[k] = object[k]
+				object = template_data
+
+				print ("AFTER TEMPLATE: ")
+				for k in object:
+					print(str(k) + ": " + str(object[k]))
+
 			if "point" in object and object.point:
 				var point = Position2D.new()
 				if not "x" in object or not "y" in object:
@@ -563,6 +589,8 @@ func build_tileset_for_scene(tilesets, source_path, options):
 				return ERR_INVALID_DATA
 
 			ts_source_path = source_path.get_base_dir().plus_file(ts.source)
+			# Used later for templates
+			_tileset_path_to_first_gid[ts_source_path] = tileset.firstgid
 
 			if ts.source.get_extension().to_lower() == "tsx":
 				var tsx_reader = TiledXMLToDictionary.new()
@@ -1127,3 +1155,74 @@ func validate_chunk(chunk):
 # Custom function to print error, to centralize the prefix addition
 func print_error(err):
 	printerr(error_prefix + err)
+
+func get_template(path):
+	# If this template has not yet been loaded
+	if not _loaded_templates.has(path):
+		# IS XML
+		if path.get_extension().to_lower() == "tx":
+			var parser = XMLParser.new()
+			var err = parser.open(path)
+			if err != OK:
+				printerr("Error opening TX file '%s'." % [path])
+				return err
+			var content = parse_template(parser, path)
+			if typeof(content) != TYPE_DICTIONARY:
+				# Error happened
+				print("Error parsing template map file '%s'." % [path])
+				return false
+			_loaded_templates[path] = content
+
+		# IS JSON
+		else:
+			var file = File.new()
+			var err = file.open(path, File.READ)
+			if err != OK:
+				return err
+
+			var content = JSON.parse(file.get_as_text())
+			if content.error != OK:
+				print("Error parsing JSON template map file '%s'." % [path], content.error_string)
+				return content.error
+			_loaded_templates[path] = content
+
+	var dict = _loaded_templates[path]
+	var dictCopy = {}
+	for k in dict:
+		dictCopy[k] = dict[k]
+
+	return dictCopy
+
+func parse_template(parser, path):
+	var err = OK
+	# Template root node shouldn't have attributes
+	var data = {}
+	var tileset_gid_increment = 0
+	data.id = 0
+
+	err = parser.read()
+	while err == OK:
+		if parser.get_node_type() == XMLParser.NODE_ELEMENT_END:
+			if parser.get_node_name() == "template":
+				break
+
+		elif parser.get_node_type() == XMLParser.NODE_ELEMENT:
+			if parser.get_node_name() == "tileset":
+				var ts_path = TiledXMLToDictionary.remove_filename_from_path(path) + parser.get_named_attribute_value_safe("source")
+				for t in _tileset_path_to_first_gid:
+					if TiledXMLToDictionary.is_same_file(ts_path, t):
+						tileset_gid_increment += _tileset_path_to_first_gid[t] - 1
+						data.tileset = t
+
+
+			if parser.get_node_name() == "object":
+				var object = TiledXMLToDictionary.parse_object(parser)
+				for k in object:
+					data[k] = object[k]
+
+		err = parser.read()
+
+	if data.has("gid"):
+		data["gid"] += tileset_gid_increment
+
+	return data
