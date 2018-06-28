@@ -291,15 +291,8 @@ static func parse_object(parser):
 
 			err = parser.read()
 
-	for attr in ["x", "y"]:
-		if not attr in data:
-			data[attr] = 0
-	if not "type" in data:
-		data.type = ""
-	if not "visible" in data:
-		data.visible = true
-
 	return data
+
 
 # Parses a tile layer from the XML and return a dictionary
 # Returns an error code if fails
@@ -580,7 +573,7 @@ static func is_same_file(path1, path2):
 		return err
 
 	var file1_str = file1.get_as_text()
-	var file2_str = file1.get_as_text()
+	var file2_str = file2.get_as_text()
 
 	if file1_str == file2_str:
 		return true

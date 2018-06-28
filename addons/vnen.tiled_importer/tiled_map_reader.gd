@@ -316,9 +316,14 @@ func make_layer(layer, parent, root, data):
 					template_data[k] = object[k]
 				object = template_data
 
-				print ("AFTER TEMPLATE: ")
-				for k in object:
-					print(str(k) + ": " + str(object[k]))
+			# Set default values for object
+			for attr in ["width", "height", "rotation", "x", "y"]:
+				if not attr in object:
+					object[attr] = 0
+			if not "type" in object:
+				object.type = ""
+			if not "visible" in object:
+				object.visible = true
 
 			if "point" in object and object.point:
 				var point = Position2D.new()
@@ -1164,14 +1169,17 @@ func get_template(path):
 			var parser = XMLParser.new()
 			var err = parser.open(path)
 			if err != OK:
-				printerr("Error opening TX file '%s'." % [path])
+				print_error("Error opening TX file '%s'." % [path])
 				return err
 			var content = parse_template(parser, path)
 			if typeof(content) != TYPE_DICTIONARY:
 				# Error happened
-				print("Error parsing template map file '%s'." % [path])
+				print_error("Error parsing template map file '%s'." % [path])
 				return false
 			_loaded_templates[path] = content
+			print("XML!")
+			for k in content:
+				print (str(k) + ": " + str(content[k]))
 
 		# IS JSON
 		else:
@@ -1180,11 +1188,27 @@ func get_template(path):
 			if err != OK:
 				return err
 
-			var content = JSON.parse(file.get_as_text())
-			if content.error != OK:
-				print("Error parsing JSON template map file '%s'." % [path], content.error_string)
-				return content.error
-			_loaded_templates[path] = content
+			var json_res = JSON.parse(file.get_as_text())
+			if json_res.error != OK:
+				print_error("Error parsing JSON template map file '%s'." % [path])
+				return json_res.error
+
+			var result = json_res.result
+			if typeof(result) != TYPE_DICTIONARY:
+				print_error("Error parsing JSON template map file '%s'." % [path])
+				return ERR_INVALID_DATA
+
+			var object = result.object
+			print(str(result))
+			if object.has("gid"):
+				if result.has("tileset"):
+					var ts_path = TiledXMLToDictionary.remove_filename_from_path(path) + result.tileset.source
+					var tileset_gid_increment = get_first_gid_from_tileset_path(ts_path) - 1
+					object.gid += tileset_gid_increment
+
+			_loaded_templates[path] = object
+			for k in object:
+				print (str(k) + ": " + str(object[k]))
 
 	var dict = _loaded_templates[path]
 	var dictCopy = {}
@@ -1209,11 +1233,8 @@ func parse_template(parser, path):
 		elif parser.get_node_type() == XMLParser.NODE_ELEMENT:
 			if parser.get_node_name() == "tileset":
 				var ts_path = TiledXMLToDictionary.remove_filename_from_path(path) + parser.get_named_attribute_value_safe("source")
-				for t in _tileset_path_to_first_gid:
-					if TiledXMLToDictionary.is_same_file(ts_path, t):
-						tileset_gid_increment += _tileset_path_to_first_gid[t] - 1
-						data.tileset = t
-
+				tileset_gid_increment = get_first_gid_from_tileset_path(ts_path) - 1
+				data.tileset = ts_path
 
 			if parser.get_node_name() == "object":
 				var object = TiledXMLToDictionary.parse_object(parser)
@@ -1226,3 +1247,10 @@ func parse_template(parser, path):
 		data["gid"] += tileset_gid_increment
 
 	return data
+
+func get_first_gid_from_tileset_path(path):
+	for t in _tileset_path_to_first_gid:
+		if TiledXMLToDictionary.is_same_file(path, t):
+			return _tileset_path_to_first_gid[t]
+
+	return 0
