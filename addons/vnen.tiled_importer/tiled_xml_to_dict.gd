@@ -549,33 +549,3 @@ static func attributes_to_dict(parser):
 			val = false
 		data[attr] = val
 	return data
-
-static func get_filename_from_path(path):
-	var substrings = path.split("/", false)
-	var file_name = substrings[substrings.size() - 1]
-	return file_name
-
-static func remove_filename_from_path(path):
-	var file_name = get_filename_from_path(path)
-	var stringSize = path.length() - file_name.length()
-	var file_path = path.substr(0,stringSize)
-	return file_path
-
-static func is_same_file(path1, path2):
-	var file1 = File.new()
-	var err = file1.open(path1, File.READ)
-	if err != OK:
-		return err
-
-	var file2 = File.new()
-	err = file2.open(path2, File.READ)
-	if err != OK:
-		return err
-
-	var file1_str = file1.get_as_text()
-	var file2_str = file2.get_as_text()
-
-	if file1_str == file2_str:
-		return true
-
-	return false

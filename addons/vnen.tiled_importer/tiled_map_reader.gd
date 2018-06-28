@@ -1177,9 +1177,6 @@ func get_template(path):
 				print_error("Error parsing template map file '%s'." % [path])
 				return false
 			_loaded_templates[path] = content
-			print("XML!")
-			for k in content:
-				print (str(k) + ": " + str(content[k]))
 
 		# IS JSON
 		else:
@@ -1199,16 +1196,13 @@ func get_template(path):
 				return ERR_INVALID_DATA
 
 			var object = result.object
-			print(str(result))
 			if object.has("gid"):
 				if result.has("tileset"):
-					var ts_path = TiledXMLToDictionary.remove_filename_from_path(path) + result.tileset.source
+					var ts_path = remove_filename_from_path(path) + result.tileset.source
 					var tileset_gid_increment = get_first_gid_from_tileset_path(ts_path) - 1
 					object.gid += tileset_gid_increment
 
 			_loaded_templates[path] = object
-			for k in object:
-				print (str(k) + ": " + str(object[k]))
 
 	var dict = _loaded_templates[path]
 	var dictCopy = {}
@@ -1232,7 +1226,7 @@ func parse_template(parser, path):
 
 		elif parser.get_node_type() == XMLParser.NODE_ELEMENT:
 			if parser.get_node_name() == "tileset":
-				var ts_path = TiledXMLToDictionary.remove_filename_from_path(path) + parser.get_named_attribute_value_safe("source")
+				var ts_path = remove_filename_from_path(path) + parser.get_named_attribute_value_safe("source")
 				tileset_gid_increment = get_first_gid_from_tileset_path(ts_path) - 1
 				data.tileset = ts_path
 
@@ -1250,7 +1244,37 @@ func parse_template(parser, path):
 
 func get_first_gid_from_tileset_path(path):
 	for t in _tileset_path_to_first_gid:
-		if TiledXMLToDictionary.is_same_file(path, t):
+		if is_same_file(path, t):
 			return _tileset_path_to_first_gid[t]
 
 	return 0
+
+static func get_filename_from_path(path):
+	var substrings = path.split("/", false)
+	var file_name = substrings[substrings.size() - 1]
+	return file_name
+
+static func remove_filename_from_path(path):
+	var file_name = get_filename_from_path(path)
+	var stringSize = path.length() - file_name.length()
+	var file_path = path.substr(0,stringSize)
+	return file_path
+
+static func is_same_file(path1, path2):
+	var file1 = File.new()
+	var err = file1.open(path1, File.READ)
+	if err != OK:
+		return err
+
+	var file2 = File.new()
+	err = file2.open(path2, File.READ)
+	if err != OK:
+		return err
+
+	var file1_str = file1.get_as_text()
+	var file2_str = file2.get_as_text()
+
+	if file1_str == file2_str:
+		return true
+
+	return false
