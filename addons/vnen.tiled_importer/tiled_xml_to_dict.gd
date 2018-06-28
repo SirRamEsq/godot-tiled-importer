@@ -258,22 +258,6 @@ static func parse_object(parser):
 	var err = OK
 	var data = attributes_to_dict(parser)
 
-	#if data.has("template"):
-		#var template_file = data["template"]
-		#var template_data = get_template(template_file)
-		#if typeof(template_data) != TYPE_DICTIONARY:
-			# Error happened
-			#print("Error getting template for object with id " + str(data["id"]))
-			#return false
-		# Overwrite template data with current object data
-		#for k in data:
-			#template_data[k] = data[k]
-		#data = template_data
-
-		#print ("AFTER TEMPLATE: ")
-		#for k in data:
-			#print(str(k) + ": " + str(data[k]))
-
 	if not parser.is_empty():
 		err = parser.read()
 		while err == OK:
@@ -307,7 +291,7 @@ static func parse_object(parser):
 
 			err = parser.read()
 
-	for attr in ["width", "height", "x", "y", "rotation"]:
+	for attr in ["x", "y"]:
 		if not attr in data:
 			data[attr] = 0
 	if not "type" in data:
